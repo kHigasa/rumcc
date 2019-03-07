@@ -4,14 +4,14 @@
 #include <string.h>
 
 enum {
-    TK_NUM = 256,
+    TK_NUM = 256, // Integer
     TK_EOF,
 };
 
 typedef struct {
     int ty; // TK_NUM, TK_EOF, ...
-    int val; // token ty: TK_NUM => value
-    int *input; // token character for error msg
+    int val; // TK_NUM => value
+    int *input; // token string for error msg
 } Token;
 
 Token tokens[100];
@@ -50,6 +50,82 @@ void tokenize(char *p) {
 void error(int i) {
     fprintf(stderr, "Error: unexpected token %s\n", tokens[i].input);
     exit(1);
+}
+
+enum {
+    ND_NUM = 256,
+};
+
+typedef struct Node {
+    int ty;
+    struct Node *lhs;
+    struct Node *rhs;
+    int val;
+} Node;
+
+// Gen node
+Node *new_node(int ty, Node *lhs, Node *rhs) {
+    Node *node = malloc(sizeof(Node));
+    node->ty = ty;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    return node;
+}
+
+Node *new_node_num(int val) {
+    Node *node = malloc(sizeof(Node));
+    node->ty = ND_NUM;
+    node->val = val;
+    return node;
+}
+
+// Type check
+int consume(int ty) {
+    if (tokens[pos].ty != ty)
+        return 0;
+    pos++;
+    return 1;
+}
+
+// Parsing
+Node *add() {
+    Node *node = mul();
+
+    for (;;) {
+        if (consume('+'))
+            node = new_node('+', node, mul());
+        else if (consume('-'))
+            node = new_node('-', node, mul());
+        else
+            return node;
+    }
+}
+
+Node *mul() {
+  Node *node = term();
+
+  for (;;) {
+    if (consume('*'))
+      node = new_node('*', node, term());
+    else if (consume('/'))
+      node = new_node('/', node, term());
+    else
+      return node;
+  }
+}
+
+Node *term() {
+    if (consume('(')) {
+        Node *node = add();
+        if (!(consume(')')))
+            error('no right paren: %s', tokens[pos].input);
+        return node;
+    }
+
+    if (tokens[pos].ty == TK_NUM)
+        return new_node_num(tokens[pos++].val);
+
+    error('not term token: %s', tokens[pos].input);
 }
 
 int main(int argc, char **argv) {
@@ -94,3 +170,4 @@ int main(int argc, char **argv) {
     printf("  ret\n");
     return 0;
 }
+
