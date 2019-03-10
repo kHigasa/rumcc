@@ -5,6 +5,7 @@
 
 enum {
     TK_NUM = 256, // Integer
+    TK_IDENT,
     TK_EOF,
 };
 
@@ -39,6 +40,14 @@ void tokenize(char *p) {
             continue;
         }
 
+        if ('a' <= *p && *p <= 'z') {
+            tokens[i].ty = TK_IDENT;
+            tokens[i].input = p;
+            i++;
+            p++;
+            continue;
+        }
+
         fprintf(stderr, "Error: can't tokenize %s\n", p);
         exit(1);
     }
@@ -54,13 +63,15 @@ void error(int i) {
 
 enum {
     ND_NUM = 256,
+    ND_IDENT,
 };
 
 typedef struct Node {
     int ty;
     struct Node *lhs;
     struct Node *rhs;
-    int val;
+    int val; // ND_NUM only
+    char name; // ND_IDENT only
 } Node;
 
 // Gen node
@@ -88,6 +99,21 @@ int consume(int ty) {
 }
 
 // Parsing
+Node *code[100];
+
+void program() {
+    int i = 0;
+    while (tokens[pos].ty != TK_EOF)
+        code[i++] = stmt();
+    code[i] = NULL;
+}
+
+Node *stmt() {
+    Node *node assign();
+    if (!consume(';'))
+        error("';'ではないトークンです: %s", tokens[pos].input);
+}
+
 Node *add() {
     Node *node = mul();
 
@@ -129,9 +155,27 @@ Node *term() {
 }
 
 // stack machine
+void gen_lval(Node *node) {
+    if (node->ty != ND_IDENT)
+        error("lvalue is not variable.");
+
+    int offset = ('z' - node->name + 1) * 8;
+    printf("  mov rax, rbp\n");
+    printf("  sub rax, %d\n", offset);
+    printf("  push rax\n");
+}
+
 void gen(Node *node) {
     if (node->ty == ND_NUM) {
         printf("  push %d\n", node->val);
+        return;
+    }
+
+    if (node->ty == ND_IDENT) {
+        gen_lval(node);
+        printf("  pop rax\n");
+        printf("  mov rax, [rax]\n");
+        printf("  push rax\n");
         return;
     }
 
@@ -159,6 +203,29 @@ void gen(Node *node) {
     printf("  push rax\n");
 }
 
+// vector
+typedef struct {
+    void **data;
+    int capacity;
+    int len
+} Vector;
+
+Vector *new_vector() {
+    Vector *vec = malloc(sizeof(Vector));
+    vec->data = malloc(sizeof(void *) * 16);
+    vec->capacity = 16;
+    vec->len = 0;
+    return *vec;
+}
+
+void vec_push(Vector *vec, void *elem) {
+    if (vec->capacity == vec->len) {
+        vec->capacity *= 2;
+        vec->data = realloc(vec->data, sizeof(void *) * vec->capacity);
+    }
+    vec->data[vec->len++];
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "Error: incorrect number of argument\n");
@@ -167,17 +234,27 @@ int main(int argc, char **argv) {
 
     // tokenize and parse
     tokenize(argv[1]);
-    Node *node = add();
+    program();
 
     // former half of asm
     printf(".intel_syntax noprefix\n");
     printf(".global main\n");
     printf("main:\n");
 
-    // gen asm
-    gen(node);
+    // prologue
+    printf("  push rbp\n");
+    printf("  mov rbp, rsp\n");
+    printf("  sub rsp, 208\n");
 
-    printf("  pop rax\n");
+    // gen asm
+    for (int i = 0; code[i]; i++) {
+        gen(code[i]);
+        printf("  pop rax\n");
+    }
+
+    // epilogue
+    printf("  mov rsp, rbp\n");
+    printf("  pop rbp\n");
     printf("  ret\n");
     return 0;
 }
