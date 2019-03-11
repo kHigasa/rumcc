@@ -2,18 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-enum {
-    TK_NUM = 256, // Integer
-    TK_IDENT,
-    TK_EOF,
-};
-
-typedef struct {
-    int ty; // TK_NUM, TK_EOF, ...
-    int val; // TK_NUM => value
-    int *input; // token string for error msg
-} Token;
+#include "rumcc.h"
 
 Token tokens[100];
 
@@ -61,19 +50,6 @@ void error(int i) {
     exit(1);
 }
 
-enum {
-    ND_NUM = 256,
-    ND_IDENT,
-};
-
-typedef struct Node {
-    int ty;
-    struct Node *lhs;
-    struct Node *rhs;
-    int val; // ND_NUM only
-    char name; // ND_IDENT only
-} Node;
-
 // Gen node
 Node *new_node(int ty, Node *lhs, Node *rhs) {
     Node *node = malloc(sizeof(Node));
@@ -96,134 +72,6 @@ int consume(int ty) {
         return 0;
     pos++;
     return 1;
-}
-
-// Parsing
-Node *code[100];
-
-void program() {
-    int i = 0;
-    while (tokens[pos].ty != TK_EOF)
-        code[i++] = stmt();
-    code[i] = NULL;
-}
-
-Node *stmt() {
-    Node *node assign();
-    if (!consume(';'))
-        error("';'ではないトークンです: %s", tokens[pos].input);
-}
-
-Node *add() {
-    Node *node = mul();
-
-    for (;;) {
-        if (consume('+'))
-            node = new_node('+', node, mul());
-        else if (consume('-'))
-            node = new_node('-', node, mul());
-        else
-            return node;
-    }
-}
-
-Node *mul() {
-  Node *node = term();
-
-  for (;;) {
-    if (consume('*'))
-      node = new_node('*', node, term());
-    else if (consume('/'))
-      node = new_node('/', node, term());
-    else
-      return node;
-  }
-}
-
-Node *term() {
-    if (consume('(')) {
-        Node *node = add();
-        if (!(consume(')')))
-            error('no right paren: %s', tokens[pos].input);
-        return node;
-    }
-
-    if (tokens[pos].ty == TK_NUM)
-        return new_node_num(tokens[pos++].val);
-
-    error('not term token: %s', tokens[pos].input);
-}
-
-// stack machine
-void gen_lval(Node *node) {
-    if (node->ty != ND_IDENT)
-        error("lvalue is not variable.");
-
-    int offset = ('z' - node->name + 1) * 8;
-    printf("  mov rax, rbp\n");
-    printf("  sub rax, %d\n", offset);
-    printf("  push rax\n");
-}
-
-void gen(Node *node) {
-    if (node->ty == ND_NUM) {
-        printf("  push %d\n", node->val);
-        return;
-    }
-
-    if (node->ty == ND_IDENT) {
-        gen_lval(node);
-        printf("  pop rax\n");
-        printf("  mov rax, [rax]\n");
-        printf("  push rax\n");
-        return;
-    }
-
-    gen(node->lhs);
-    gen(node->rhs);
-
-    printf("  pop rdi\n");
-    printf("  pop rax\n");
-
-    switch (node->ty) {
-    case '+':
-        printf("  add rax rdi\n");
-        break;
-    case '-':
-        printf("  sub rax, rdi\n");
-        break;
-    case '*':
-        printf("  mul rdi\n");
-        break;
-    case '/':
-        printf("  mov rdx, 0\n");
-        printf("  div rdi\n");
-    }
-
-    printf("  push rax\n");
-}
-
-// vector
-typedef struct {
-    void **data;
-    int capacity;
-    int len
-} Vector;
-
-Vector *new_vector() {
-    Vector *vec = malloc(sizeof(Vector));
-    vec->data = malloc(sizeof(void *) * 16);
-    vec->capacity = 16;
-    vec->len = 0;
-    return *vec;
-}
-
-void vec_push(Vector *vec, void *elem) {
-    if (vec->capacity == vec->len) {
-        vec->capacity *= 2;
-        vec->data = realloc(vec->data, sizeof(void *) * vec->capacity);
-    }
-    vec->data[vec->len++];
 }
 
 int main(int argc, char **argv) {
